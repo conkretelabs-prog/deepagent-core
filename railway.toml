@@ -1,0 +1,32 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+healthcheckPath = "/health/"
+healthcheckTimeout = 300
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+
+[[services]]
+name = "web"
+source = "."
+
+[services.web]
+buildCommand = "pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate"
+startCommand = "gunicorn deepagent.wsgi:application --bind 0.0.0.0:$PORT"
+
+[[services]]
+name = "worker"
+source = "."
+
+[services.worker]
+buildCommand = "pip install -r requirements.txt"
+startCommand = "celery -A deepagent worker --loglevel=info"
+
+[[services]]
+name = "scheduler"
+source = "."
+
+[services.scheduler]
+buildCommand = "pip install -r requirements.txt"
+startCommand = "celery -A deepagent beat --loglevel=info"
