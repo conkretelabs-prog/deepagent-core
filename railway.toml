@@ -7,6 +7,23 @@ healthcheckTimeout = 300
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
 
+# PostgreSQL Database Service
+[[services]]
+name = "postgres"
+source = "postgres:15"
+
+[services.postgres]
+variables = { POSTGRES_DB = "deepagent", POSTGRES_USER = "deepagent", POSTGRES_PASSWORD = "deepagent_secure_password" }
+
+# Redis Cache Service
+[[services]]
+name = "redis"
+source = "redis:7.0"
+
+[services.redis]
+variables = { REDIS_PASSWORD = "redis_secure_password" }
+
+# Web Service (Django Application)
 [[services]]
 name = "web"
 source = "."
@@ -14,19 +31,47 @@ source = "."
 [services.web]
 buildCommand = "pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate"
 startCommand = "gunicorn deepagent.wsgi:application --bind 0.0.0.0:$PORT"
+variables = { 
+  DJANGO_SETTINGS_MODULE = "deepagent.settings.production",
+  SECRET_KEY = "${{ secrets.SECRET_KEY }}",
+  DATABASE_URL = "${{ postgres.DATABASE_URL }}",
+  REDIS_URL = "${{ redis.REDIS_URL }}",
+  ALLOWED_HOSTS = "*",
+  DEBUG = "False",
+  CELERY_BROKER_URL = "${{ redis.REDIS_URL }}",
+  CELERY_RESULT_BACKEND = "${{ redis.REDIS_URL }}"
+}
 
+# Celery Worker Service
 [[services]]
 name = "worker"
 source = "."
 
 [services.worker]
 buildCommand = "pip install -r requirements.txt"
-startCommand = "celery -A deepagent worker --loglevel=info"
+startCommand = "celery -A deepagent worker --loglevel=info --concurrency=2"
+variables = { 
+  DJANGO_SETTINGS_MODULE = "deepagent.settings.production",
+  SECRET_KEY = "${{ secrets.SECRET_KEY }}",
+  DATABASE_URL = "${{ postgres.DATABASE_URL }}",
+  REDIS_URL = "${{ redis.REDIS_URL }}",
+  CELERY_BROKER_URL = "${{ redis.REDIS_URL }}",
+  CELERY_RESULT_BACKEND = "${{ redis.REDIS_URL }}"
+}
 
+# Celery Beat Scheduler Service
 [[services]]
 name = "scheduler"
 source = "."
 
 [services.scheduler]
 buildCommand = "pip install -r requirements.txt"
-startCommand = "celery -A deepagent beat --loglevel=info"
+startCommand = "celery -A deepagent beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler"
+variables = { 
+  DJANGO_SETTINGS_MODULE = "deepagent.settings.production",
+  SECRET_KEY = "${{ secrets.SECRET_KEY }}",
+  DATABASE_URL = "${{ postgres.DATABASE_URL }}",
+  REDIS_URL = "${{ redis.REDIS_URL }}",
+  CELERY_BROKER_URL = "${{ redis.REDIS_URL }}",
+  CELERY_RESULT_BACKEND = "${{ redis.REDIS_URL }}"
+}
